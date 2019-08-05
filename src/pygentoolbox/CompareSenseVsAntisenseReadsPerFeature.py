@@ -58,13 +58,13 @@ def count_reads_sense_antisense(dgff3, dsam):
                     # meaning the aligned sequence overlaps in some way to the gff3 feature
                     if (start_gff <= end_sam) and (start_sam <= end_gff):
                         # feature types = exon, CDS, mRNA, 5' UTR, etc...
-                        if gff3line[1] == '+':  # feature is 5' -> 3'
+                        if gff3line[6] == '+':  # feature is 5' -> 3'
                             #####  This statement is not universal!!  #####
                             if aligned_seq[1] == 16:  # then the read is mapped in reverse
                                 countantisensereads += 1
                             else:  # it is forward
                                 countsensereads += 1
-                        elif gff3line[1] == '-':  # feature is 3' -> 5'
+                        elif gff3line[6] == '-':  # feature is 3' -> 5'
                             #####  This statement is not universal!!  #####
                             if aligned_seq[1] == 16:  # then the read is mapped in reverse
                                 countsensereads += 1
@@ -128,6 +128,7 @@ def read_gff3(GFF3file, features=['all']):
 
 
 def main(GFF3file, samfiles):
+    print('Start')
     import os
 
     # dTE, dTEhead = read_sam(TEfile, positions=[0])  # sam file of aligned TEs
@@ -153,3 +154,5 @@ def main(GFF3file, samfiles):
         header = '\t'.join(['ID', 'Mean of Sense Counts', 'Mean of Antisense Counts', 'Mean of Sense Proportions', 'Mean of Antisense Proportions'])
         output = [header] + ['\t'.join([n, str(mean(dfeaturetypesensecounts[n])), str(mean(dfeaturetypeantisensecounts[n])), str(mean(dfeaturetypesenseproportions[n])), str(mean(dfeaturetypeantisenseproportions[n]))]) for n in list(dfeaturetypesensecounts.keys())]
         write_out(outpath, output)
+
+    print('End')
