@@ -11,9 +11,10 @@ def reverse_complement(x, reverse=True, complement=True):
         x = x.translate(trans)  # complement string
     return x
 
-def plot_scatter(x, y, outpath, title_analysis, exitplotcount, countplot, prefix='NaN', xlab='Distance From Read End', ylab='Depth', figlength=10, figheight=5):
+def plot_scatter(x, y, outpath, title_analysis, exitplotcount, countplot, legenlocation='upper right', prefix='NaN', xlab='Distance From Read End', ylab='Depth', figlength=10, figheight=5):
     ''' x is list of x values, y is list of y values, path is full path to output file '''
     import matplotlib.pyplot as plt
+    # import math
     # import os
     # font = {'family': 'normal',
     #         'weight': 'normal',
@@ -22,12 +23,13 @@ def plot_scatter(x, y, outpath, title_analysis, exitplotcount, countplot, prefix
         plt.rcParams.update({'font.size': 16})
         plt.figure(figsize=(figlength, figheight))
 
+    # y = [math.log(i, 2) for i in y]
     plt.plot(x, y, label=prefix)
     plt.grid(True)
     plt.title(title_analysis)
     plt.xlabel(xlab)
     plt.ylabel(ylab)
-    plt.legend(loc='upper right')
+    plt.legend(loc=legenlocation, fontsize=10)
     plt.savefig(outpath)
     if countplot == exitplotcount:  # 2 = len(infiles), infiles passed to phasing function
         plt.show()
@@ -105,7 +107,8 @@ def calculate_depth_of_coverage(sam, maxdepth=0, mindepth=0):
         for line in FILE:
             if line[0] != '@':
                 for i in range(len(line.strip().split('\t')[9])):  # for each base in sequence
-                    position = int(line.strip().split('\t')[3]) + i  # calculate coordinate in scaffold/chromosome
+                    # subtract one from position because sam file left-most positions are 1-based
+                    position = int(line.strip().split('\t')[3]) + i - 1  # calculate coordinate in scaffold/chromosome
                     key = '_'.join([line.strip().split('\t')[2], str(position)])
                     # for each position in each scaffold + 1 if base present
                     d[key] = d.setdefault(key, 0) + 1  # for adding use this structure
@@ -145,7 +148,7 @@ def single_stranded_rna(samfilelist_f, samfilelist_r, maxdepth):
             else:
                 pass
 
-        allnames = list(set().union(names_for, names_rev)) # union two name lists
+        allnames = list(set().union(names_for, names_rev))  # union two name lists
         # sort key values naturally # scaffolds may not be in same order as sam but coordinates within each scaffold should be ordered
         sortnames = natsorted(allnames, key=lambda y: y.lower())  # or # natsorted(x, alg=ns.IGNORECASE)  # or alg=ns.IC
 
@@ -158,12 +161,14 @@ def single_stranded_rna(samfilelist_f, samfilelist_r, maxdepth):
 
         plot_scatter(list(range(len(sortnames))), [d_for[n] for n in sortnames],
                          os.path.join(path, '.'.join(file.split('.')[:-1] + [outfileprefix, 'png'])), analysis,
-                         2, 1, '_'.join(file.split('.')[:4]), 'Genomic Position', figlength=20, figheight=10)
+                         2, 1, 'upper right', '_'.join(file.split('.')[:4]), 'Genomic Position', figlength=20,
+                         figheight=10)
 
         path, file = os.path.split(reverse)
         plot_scatter(list(range(len(sortnames))), [-1*d_rev[n] for n in sortnames],
                          os.path.join(path, '.'.join(file.split('.')[:-1] + [outfileprefix, 'png'])), analysis,
-                         2, 2, '_'.join(file.split('.')[:4]), 'Genomic Position', figlength=20, figheight=10)  # plot reverse reads with negative value
+                         2, 2, 'upper right', '_'.join(file.split('.')[:4]), 'Genomic Position', figlength=20,
+                         figheight=10)  # plot reverse reads with negative value
 
 
 def calculate_base_composition(bases, verbose=False, basekey=['A', 'T', 'G', 'C']):
@@ -269,12 +274,14 @@ def ping_pong(infiles_f, infiles_r, lower=0, upper=20, analysis='PingPong55'):
     ''' Assumes first forward and reverse files are from the same sam/bam file '''
     ''' Main difference from phasing analysis is comparing forward to reverse reads '''
     import os
+    from natsort import natsorted, ns
 
     end1 = 2  # access 5' end information
     end2 = 2  # access 5' end information
     print('lower: %d, upper: %d, orientation not applicable' % (lower, upper))
 
     allsignals = []
+    alldicer = []
     for forward, reverse in zip(infiles_f, infiles_r):
         print(forward)
         print(reverse)
@@ -291,6 +298,7 @@ def ping_pong(infiles_f, infiles_r, lower=0, upper=20, analysis='PingPong55'):
                 dr['_'.join(s[0:2])] = s
                 namesr.append('_'.join(s[0:2]))
 
+        dicer_signal_location = {}  # record locations and strength of dicer signal at position upper - 3 (should be - 2 if count was 1 based)
         # only need to compare forward to reverse, not reverse to forward. This would be redundant
         signals = [0] * abs(upper - lower)
         count = 0  # keep track of element in list signals that i should add too
@@ -308,9 +316,12 @@ def ping_pong(infiles_f, infiles_r, lower=0, upper=20, analysis='PingPong55'):
                     else:  # get 5' counts from i+x position
                         Nix = int(dr['_'.join([s[0], str(int(s[1]) + x)])][end2])  # get 5' counts from i+x position
                     minimums.append(min(Mi, Nix))  # min(Mi, Nix) # Mi * Nix # assume that reads must be paired 1/1 ratio
+                    if (count == upper - 3) and (min(Mi, Nix) != 0):  # count is zero based so it should be -2 normally for dicer products
+                        dicer_signal_location[name] = dicer_signal_location.setdefault(name, 0) + min(Mi, Nix)
             signals[count] = str(sum(minimums))  # sum of all minimum pair counts for distance x from position
             count += 1  # add one before going to next distance value
         allsignals.append(signals)
+        alldicer.append(dicer_signal_location)
 
     outfilename = 'PingPong.FvsR.55'
     # add name of files to output
@@ -319,7 +330,7 @@ def ping_pong(infiles_f, infiles_r, lower=0, upper=20, analysis='PingPong55'):
     for fullpath, signal in zip(infiles_f, allsignals):
         path, file = os.path.split(fullpath)
         output.append('\t'.join([file] + signal))
-        plot_scatter(list(range(lower, upper)), [int(sig) for sig in signal], os.path.join(path, '.'.join(file.split('.')[:-1] + [outfilename, 'pdf'])), analysis, len(allsignals), countplot, '_'.join(file.split('.')[:4]))
+        plot_scatter(list(range(lower, upper)), [int(sig) for sig in signal], os.path.join(path, '.'.join(file.split('.')[:-1] + [outfilename, 'pdf'])), analysis, len(allsignals), countplot, 'upper left', '_'.join(file.split('.')[:4]))
         countplot += 1
 
     # output data
@@ -328,8 +339,23 @@ def ping_pong(infiles_f, infiles_r, lower=0, upper=20, analysis='PingPong55'):
     with open(outfile, 'w') as OUT:
         OUT.write('\n'.join(output))
 
+    for fullpath, dicer_dictionary in zip(infiles_f, alldicer):
+        path, file = os.path.split(fullpath)
+        # sort dictionary by value and output. output is position info as key and sorted by value # of 5-5
+        # {k: v for k, v in sorted(x.items(), key=lambda item: item[1])}
+        output = [f'{k}\t{v}' for k, v in sorted(dicer_dictionary.items(), key=lambda item: item[1], reverse=True)]
+        outfile = os.path.join(path, '.'.join(file.split('.')[:-1] + [outfilename, 'DicerSignal.SortStrength.out']))
+        print(f'Writing to output file: {outfile}')
+        with open(outfile, 'w') as OUT:
+            OUT.write('\n'.join(output))
+        output = [f'{k}\t{v}' for k, v in natsorted(dicer_dictionary.items(), key=lambda item: item[0])]
+        outfile = os.path.join(path, '.'.join(file.split('.')[:-1] + [outfilename, 'DicerSignal.SortPosition.out']))
+        print(f'Writing to output file: {outfile}')
+        with open(outfile, 'w') as OUT:
+            OUT.write('\n'.join(output))
 
-def phasing(infiles, lower=-10, upper=50, analysis='Phasing35', orientation='forward'):
+
+def phasing(infiles, lower=-10, upper=50, seqlength=23, analysis='Phasing35', orientation='forward'):
     ''' infiles, list of full paths to files output from count53 function '''
     ''' lower int(), upper int(), analysis == 'Phasing35' or 'PeriodicPeaks55' '''
     import os
@@ -396,7 +422,7 @@ def phasing(infiles, lower=-10, upper=50, analysis='Phasing35', orientation='for
         output.append('\t'.join([file] + signal))
         plot_scatter(list(range(lower, upper)), [int(sig) for sig in signal],
                      os.path.join(path, '.'.join(file.split('.')[:-1] + [outfilename, 'pdf'])),
-                     analysis, len(allsignals), countplot, '_'.join(file.split('.')[:4]))
+                     analysis, len(allsignals), countplot, 'upper right', '_'.join(file.split('.')[:4]))
         countplot += 1
 
     # output data
@@ -413,7 +439,26 @@ def phasing(infiles, lower=-10, upper=50, analysis='Phasing35', orientation='for
         allsignals = [[int(signal) for signal in signals] for signals in allsignals]
         tallsignals = list(map(list, zip(*allsignals)))
         df = pd.DataFrame(tallsignals, columns=colnames)
-        trend_and_periodicity(df, analysis)
+        trend_and_periodicity(df, analysis, seqlength)
+
+
+def get_rightmost_reference_based_alignment_coordinate(CIGAR, leftmost_coordinate):
+    import re
+    cigar = re.findall(r'\d+[A-Z]', CIGAR)
+    if cigar == []:  # if there was a match # sometimes CIGAR string == * # this skips unmapped reads
+        print(f'Provided CIGAR string: {CIGAR} does not match CIGAR pattern \\d+[A-Z]')
+        rightmost_position = 0  # assumes unmapped read
+    else:  # then read should be mapped
+        rightmost_position = leftmost_coordinate - 1  # subtract 1 because leftmost base is 1-based
+        for i in cigar:
+            if i[-1] in ['M', 'N', 'D', 'X', '=']:
+                rightmost_position += int(i[:-1])
+            elif i[-1] in ['I', 'S', 'H', 'P']:
+                pass
+            else:
+                pass
+
+    return rightmost_position
 
 
 def count53(filelist, maxdepth, orientation='forward'):
@@ -437,15 +482,18 @@ def count53(filelist, maxdepth, orientation='forward'):
                 if line[0] == '@':
                     pass
                 else:
+                    leftmost_coordinate = int(line.split('\t')[3])
+                    CIGAR = line.strip().split('\t')[5]
                     if orientation == 'forward':
                         scaff_pos5 = '_'.join(line.split('\t')[2:4])  # scaffold name + 5' position
                         # subtract one from coordinate below because 3' end # reasoning: start=11, end = 15, len=5, but 11+5 = 16 not 15
-                        scaff_pos3 = '_'.join([line.split('\t')[2]] + [str(int(line.split('\t')[3]) + len(line.split('\t')[9]) - 1)])  # scaffold name + 3' position
+                        # scaff_pos3 = '_'.join([line.split('\t')[2]] + [str(int(line.split('\t')[3]) + len(line.split('\t')[9]) - 1)])  # scaffold name + 3' position
+                        scaff_pos3 = '_'.join([line.split('\t')[2]] + [str(get_rightmost_reference_based_alignment_coordinate(CIGAR, leftmost_coordinate))])  # scaffold name + 3' position
                     elif orientation == 'reverse':  # switch 5' and 3' values for reverse reads
                         scaff_pos3 = '_'.join(line.split('\t')[2:4])  # scaffold name + 3' position
                         # subtract one from coordinate below because 3' end # reasoning: start=11, end = 15, len=5, but 11+5 = 16 not 15
-                        scaff_pos5 = '_'.join([line.split('\t')[2]] + [str(int(line.split('\t')[3]) + len(line.split('\t')[9]) - 1)])  # scaffold name + 5' position
-
+                        # scaff_pos5 = '_'.join([line.split('\t')[2]] + [str(int(line.split('\t')[3]) + len(line.split('\t')[9]) - 1)])  # scaffold name + 5' position
+                        scaff_pos5 = '_'.join([line.split('\t')[2]] + [str(get_rightmost_reference_based_alignment_coordinate(CIGAR, leftmost_coordinate))])
                     # could have done below two lines, but doesn't keep order
                     # d5[scaff_pos5].get(scaff_pos5, 0) + 1  # kinda slow # counts number of 5' positions for all scaffolds
                     # d3[scaff_pos3].get(scaff_pos3, 0) + 1  # kinda slow # counts number of 3' positions for all scaffolds
@@ -495,22 +543,22 @@ def count53(filelist, maxdepth, orientation='forward'):
     return(outnames)
 
 
-def main(samfilelist_f, samfilelist_r, maxdepth=0):  # 0 maxdepth will not limit depth > 0 will limit to max depth
+def main(samfilelist_f, samfilelist_r, seqlength=23, maxdepth=0):  # 0 maxdepth will not limit depth > 0 will limit to max depth
     infiles_f = count53(samfilelist_f, maxdepth, orientation='forward')  # infiles = scaffold\tposition\t#of5'ends\t#of3'ends
     infiles_r = count53(samfilelist_r, maxdepth, orientation='reverse')
     print('##################################################')
     print('Start phasing analysis')
-    phasing(infiles_f, -10, 50, analysis='Phasing35', orientation='forward')
-    phasing(infiles_r, -10, 50, analysis='Phasing35', orientation='reverse')
+    phasing(infiles_f, -10, 50, seqlength, analysis='Phasing35', orientation='forward')
+    phasing(infiles_r, -10, 50, seqlength, analysis='Phasing35', orientation='reverse')
     print('Done with phasing analysis')
     print('##################################################')
     print('Starting periodic peaks analysis')
-    phasing(infiles_f, 20, 200, analysis='PeriodicPeaks55', orientation='forward')
-    phasing(infiles_r, 20, 200, analysis='PeriodicPeaks55', orientation='reverse')
+    phasing(infiles_f, 20, 200, seqlength, analysis='PeriodicPeaks55', orientation='forward')
+    phasing(infiles_r, 20, 200, seqlength, analysis='PeriodicPeaks55', orientation='reverse')
     print('Done with periodic peaks analysis')
     print('##################################################')
     print('Starting ping pong analysis')
-    ping_pong(infiles_f, infiles_r, 0, 23)  # compare 5' forward to 5' reverse reads and vice versa
+    ping_pong(infiles_f, infiles_r, 0, seqlength)  # compare 5' forward to 5' reverse reads and vice versa
     print('Done with ping pong analysis')
     print('##################################################')
     print('Starting: Is my RNA single stranded? analysis')

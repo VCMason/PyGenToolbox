@@ -58,25 +58,26 @@ def count_reads_sense_antisense(dgff3, dsam):
                     # meaning the aligned sequence overlaps in some way to the gff3 feature
                     if (start_gff <= end_sam) and (start_sam <= end_gff):
                         # feature types = exon, CDS, mRNA, 5' UTR, etc...
+                        flag = int(aligned_seq[1])
                         if gff3line[6] == '+':  # feature is 5' -> 3'
-                            #####  This statement is not universal!!  #####
-                            if aligned_seq[1] == 16:  # then the read is mapped in reverse
+                            if f'{flag:012b}'[-5] == '1':  # if 1 then it is reverse # '000000010000' # 16 # then the read is mapped in reverse
                                 countantisensereads += 1
-                            else:  # it is forward
+                            else:  # it is forward # then f'{flag:012b}'[-5] is 0
                                 countsensereads += 1
                         elif gff3line[6] == '-':  # feature is 3' -> 5'
-                            #####  This statement is not universal!!  #####
-                            if aligned_seq[1] == 16:  # then the read is mapped in reverse
+                            if f'{flag:012b}'[-5] == '1':  # if 1 then it is reverse # '000000010000' # 16  # then the read is mapped in reverse
                                 countsensereads += 1
                             else:
                                 countantisensereads += 1
+                        else:
+                            print('Read orientations in sam file are not specified as + or -')
                         totalreads += 1
             if totalreads != 0:
                 allnames.append(feature)
-                dallsensecounts.setdefault(feature, []).append(countsensereads)
-                dallantisensecounts.setdefault(feature, []).append(countantisensereads)
-                dallsenseproportions.setdefault(feature, []).append(countsensereads / totalreads)
-                dallantisenseproportions.setdefault(feature, []).append(countantisensereads / totalreads)
+                dallsensecounts[feature] = countsensereads
+                dallantisensecounts[feature] = countantisensereads
+                dallsenseproportions[feature] = round(countsensereads / totalreads, 2)
+                dallantisenseproportions[feature] = round(countantisensereads / totalreads, 2)
                 dfeaturetypesensecounts.setdefault(gff3line[2], []).append(countsensereads)
                 dfeaturetypeantisensecounts.setdefault(gff3line[2], []).append(countantisensereads)
                 dfeaturetypesenseproportions.setdefault(gff3line[2], []).append(countsensereads / totalreads)
@@ -146,13 +147,20 @@ def main(GFF3file, samfiles):
         dfeaturetypeantisenseproportions = count_reads_sense_antisense(dgff3, dsRNA)
 
         path, file = os.path.split(sam)
-        outpath = os.path.join(path, '.'.join(file.split('.')[:-1] + ['SenseVsAntiSense', 'allfeatures', 'tsv']))
-        output = ['\t'.join([n, str(dallsensecounts[n]), str(dallantisensecounts[n]), str(dallsenseproportions[n]), str(dallantisenseproportions[n])]) for n in allnames]
-        write_out(outpath, output)
-
         outpath = os.path.join(path, '.'.join(file.split('.')[:-1] + ['SenseVsAntiSense', 'featuretypes', 'tsv']))
         header = '\t'.join(['ID', 'Mean of Sense Counts', 'Mean of Antisense Counts', 'Mean of Sense Proportions', 'Mean of Antisense Proportions'])
-        output = [header] + ['\t'.join([n, str(mean(dfeaturetypesensecounts[n])), str(mean(dfeaturetypeantisensecounts[n])), str(mean(dfeaturetypesenseproportions[n])), str(mean(dfeaturetypeantisenseproportions[n]))]) for n in list(dfeaturetypesensecounts.keys())]
-        write_out(outpath, output)
+        # output = [header] + ['\t'.join([n, str(round(mean(dfeaturetypesensecounts[n]), 2)), str(round(mean(dfeaturetypeantisensecounts[n]), 2)), str(round(mean(dfeaturetypesenseproportions[n]), 2)), str(round(mean(dfeaturetypeantisenseproportions[n]), 2))]) for n in list(dfeaturetypesensecounts.keys())]
+        # write_out(outpath, output)
+        print('Writing out file: %s' % outpath)
+        with open(outpath, 'w') as OUT:
+            OUT.write('\n'.join([header] + ['\t'.join([n, str(round(mean(dfeaturetypesensecounts[n]), 2)), str(round(mean(dfeaturetypeantisensecounts[n]), 2)), str(round(mean(dfeaturetypesenseproportions[n]), 2)), str(round(mean(dfeaturetypeantisenseproportions[n]), 2))]) for n in list(dfeaturetypesensecounts.keys())]))
+
+        outpath = os.path.join(path, '.'.join(file.split('.')[:-1] + ['SenseVsAntiSense', 'allfeatures', 'tsv']))
+        # output = '\n'.join(['\t'.join([n, str(dallsensecounts[n]), str(dallantisensecounts[n]), str(dallsenseproportions[n]), str(dallantisenseproportions[n])]) for n in allnames])
+        # write_out(outpath, output)
+
+        print('Writing out file: %s' % outpath)
+        with open(outpath, 'w') as OUT:
+            OUT.write('\n'.join(['\t'.join([n, str(dallsensecounts[n]), str(dallantisensecounts[n]), str(dallsenseproportions[n]), str(dallantisenseproportions[n])]) for n in allnames]))
 
     print('End')
