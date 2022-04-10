@@ -25,10 +25,6 @@ def write_to_bed(windows, outpath):
         OUT.write('\n'.join(windows))
 
 
-def mean_with_denominator(lst, denominator):
-    return sum(lst) / denominator
-
-
 def collapse_windows(sortwindows):
     # this function is janky
     # sortwindows is a naturally sorted list of strings
@@ -77,6 +73,11 @@ def collapse_windows(sortwindows):
         prevwindepth = float(win.split('\t')[3])
 
     return collapsedsortwindows
+
+
+def mean_with_denominator(lst, denominator):
+    mean = sum(lst) / denominator
+    return mean
 
 
 def calculate_depth_with_pysam_sliding_windows(bamfile, dscaff_max, step=25, winsize=100, cutoff=100):
